@@ -1,0 +1,47 @@
+---
+- hosts: kvm
+  vars:
+    #Make sure that this location has a lot of empty space for all of your VM hard drives
+    storage_pool_location: /path
+    storage_pool_name: name
+  become: true
+  tasks:
+      - name: Install virtualization packages
+        yum: name={{ item }}
+             state=latest
+        with_items:
+          - qemu-kvm
+          - libvirt
+          - libvirt-python
+          - libguestfs-tools
+          - virt-install
+
+      - name: Start and enable libvirtd
+        service: name=libvirtd
+                 enabled=yes
+                 state=started
+
+      - name: Create storage pool directory
+        file: path={{ Stroage_pool_location }}
+              state=directory
+              owner=root
+              group=root
+              mode=0700
+
+      - name: Enable the qemu user to access the storage pool location
+        acl: name={{ storage_pool_location }}
+             entity=qemu
+             etype=user
+             permissions="rx"
+             recursive=yes
+             state=present
+             default=yes
+
+      - name: Define new storage pool
+        raw: virsh pool-define-as {{ storage_pool_name }} dir - - - - "{{ storage_pool_location }}"
+
+      - name: Build new storage pool
+        raw: virsh pool-build {{ storage_pool_name }}
+
+      - name: Start and enable autostart for new pool
+        raw: virsh pool-start {{ storage_pool_name }} && virsh pool-autostart {{ storage_pool_name }}
